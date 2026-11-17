@@ -1,6 +1,6 @@
 // Daily current affairs: read feeds, pick exam-relevant items, build notes from the source's own sentences,
 // save to data/digest.json for the site, and send a short Telegram message.
-import { getText, parseFeed, clean, esc, gemini, makeNotes, articleText, telegram, chunk, readJson, writeJson, sleep, PHASE, SITE_URL, todayIST } from './lib.mjs';
+import { getText, parseFeed, isEnglish, clean, esc, gemini, makeNotes, articleText, telegram, chunk, readJson, writeJson, sleep, PHASE, SITE_URL, todayIST } from './lib.mjs';
 
 const UPSC = PHASE === 'OPSC_UPSC';
 const PER_SOURCE = 12, MAX_ARTICLES = 60;
@@ -62,6 +62,7 @@ const cutoff = Date.now() - 36 * 3600e3;
 const seen = new Set(), counts = {}, arts = [];
 for (const g of got) for (const j of g.items) {
   if (j.t && j.t < cutoff) continue;
+  if (!isEnglish(j.title)) continue;
   const key = j.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 80);
   if (seen.has(key)) continue;
   seen.add(key);

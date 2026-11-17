@@ -4,6 +4,13 @@ import path from 'node:path';
 
 export const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
+// True when most letters are Latin, so Hindi, Odia and other scripts are skipped. Everything on the site stays in English.
+export function isEnglish(text) {
+  const letters = String(text || '').match(/\p{L}/gu) || [];
+  if (letters.length < 8) return true;
+  const latin = letters.filter(c => /[A-Za-z]/.test(c)).length;
+  return latin / letters.length >= 0.8;
+}
 export const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 export const PHASE = process.env.PHASE === 'OPSC_UPSC' ? 'OPSC_UPSC' : 'SSC_ODISHA';
 export const SITE_URL = process.env.SITE_URL || (process.env.GITHUB_REPOSITORY
@@ -104,7 +111,8 @@ export async function articleText(url, max = 6000) {
     const art = html.match(/<article\b[\s\S]*?<\/article>/i);
     const body = art ? art[0] : html;
     const paras = (body.match(/<p\b[^>]*>[\s\S]*?<\/p>/gi) || []).map(clean).filter(p => p.length > 50);
-    return paras.join('\n').slice(0, max);
+    const joined = paras.join('\n').slice(0, max);
+    return isEnglish(joined) ? joined : '';
   } catch (e) { return ''; }
 }
 

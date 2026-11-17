@@ -1,6 +1,6 @@
 // Weekly GS research: think tanks and global bodies. Picks the most useful items per GS paper,
 // builds notes from the source's own sentences, with a diagram, saves data/research.json for the site, sends a Telegram summary.
-import { getText, parseFeed, discoverFeeds, scrapeLinks, esc, gemini, makeNotes, articleText, telegram, chunk, readJson, writeJson, sleep, SITE_URL, todayIST } from './lib.mjs';
+import { getText, parseFeed, isEnglish, discoverFeeds, scrapeLinks, esc, gemini, makeNotes, articleText, telegram, chunk, readJson, writeJson, sleep, SITE_URL, todayIST } from './lib.mjs';
 
 const DAYS_BACK = 10;
 const SOURCES = [
@@ -60,7 +60,7 @@ async function handle(s) {
 }
 const results = await Promise.all(SOURCES.map(handle));
 const collected = [];
-results.forEach(r => r.items.forEach(x => collected.push({ id: collected.length + 1, source: r.name, gs: r.gs, title: x.title, link: x.link, dated: x.t !== null, snippet: x.snippet })));
+results.forEach(r => r.items.filter(x => isEnglish(x.title)).forEach(x => collected.push({ id: collected.length + 1, source: r.name, gs: r.gs, title: x.title, link: x.link, dated: x.t !== null, snippet: x.snippet })));
 const reached = results.filter(r => r.method !== 'none').length;
 const missed = results.filter(r => r.method === 'none').map(r => r.name);
 console.log('reached', reached, 'of', results.length, '; items', collected.length);
