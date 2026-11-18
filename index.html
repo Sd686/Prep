@@ -238,6 +238,7 @@ var S = load();
 function save(){
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
   catch (e) { toast('This browser blocked saving. Export a backup to keep your data.'); }
+  if (typeof queueSync === 'function') queueSync();
 }
 
 /* ---------- data from n8n ---------- */
@@ -395,7 +396,7 @@ function itemHTML(it, compact){
     (!compact && it.why ? '<p class="why"><b>Why it matters:</b> ' + esc(it.why) + '</p>' : '') +
     (!compact && it.mains_angle ? '<p class="why"><b>Mains angle:</b> ' + esc(it.mains_angle) + '</p>' : '') +
     (compact ? '' : '<div class="meta">' + (it.gs ? '<span class="chip">' + esc(it.gs) + '</span>' : '') + chips + '</div>') +
-    (hasMore(it) ? moreBtn(it.key, 'notes' + (it.diagram ? ' and diagram' : '')) + (OPEN[it.key] ? detailHTML(it) : '') : '') +
+    (hasMore(it) ? moreBtn(it.key, 'notes' + (it.diagram ? ' and diagram' : '')) + (OPEN[it.key] ? detailHTML(it) : '') : (it.status ? '<p class="note">No notes for this item: ' + esc(it.status) + '. Use the title to open the source.</p>' : '')) +
     (compact && (it.exams || []).length ? '<p class="src">' + esc(it.exams.join(', ')) + '</p>' : '') +
     '</article>';
 }
@@ -513,7 +514,7 @@ function researchHTML(){
         (it.summary ? '<p>' + esc(it.summary) + '</p>' : '') +
         (it.mains_use ? '<p class="why"><b>Use in Mains:</b> ' + esc(it.mains_use) + '</p>' : '') +
         '<div class="meta"><span class="chip">' + esc(it.source) + '</span>' + (it.theme ? '<span class="chip">' + esc(it.theme) + '</span>' : '') + '<span class="src">' + esc(fmt(it.date)) + '</span></div>' +
-        (hasMore(it) ? moreBtn(it.key, 'notes' + (it.diagram ? ' and diagram' : '')) + (OPEN[it.key] ? detailHTML(it) : '') : '') + '</article>';
+        (hasMore(it) ? moreBtn(it.key, 'notes' + (it.diagram ? ' and diagram' : '')) + (OPEN[it.key] ? detailHTML(it) : '') : (it.status ? '<p class="note">No notes for this item: ' + esc(it.status) + '. Use the title to open the source.</p>' : '')) + '</article>';
     }).join('');
   });
   return out;
@@ -952,7 +953,7 @@ var LINKS = [
 ];
 VIEWS.resources = function(){
   return '<h2>Official resources</h2><p class="note">Official sites only. Syllabus, exam pattern and dates change, so always use the latest notification and ignore third-party summaries when they disagree.</p><div class="res">' +
-    LINKS.map(function(g){ return '<h3>' + esc(g[0]) + '</h3><ul>' + g[1].map(function(l){ return '<li><a href="' + esc(l[1]) + '" target="_blank" rel="noopener"><b>' + esc(l[0]) + '</b></a><p class="note">' + esc(l[2]) + '</p></li>'; }).join('') + '</ul>'; }).join('') + '</div>';
+    LINKS.map(function(g){ return '<h3>' + esc(g[0]) + '</h3><ul>' + g[1].map(function(l){ return '<li><a href="' + esc(l[1]) + '" target="_blank" rel="noopener"><b>' + esc(l[0]) + '</b></a><p class="note">' + esc(l[2]) + '</p></li>'; }).join('') + '</ul>'; }).join('') + '</div>' + syncPanel();
 };
 
 
@@ -1102,6 +1103,84 @@ VIEWS.progress = function(){
   // 4. Exams appeared
   if (S.past.length) out += '<h3>Exams you have appeared in</h3><p><b>' + S.past.length + '</b> logged in the Tests tab.</p>';
   return out;
+};
+
+
+/* =====================================================
+   AUTO BACKUP TO GOOGLE (Drive file + Sheet) through your own Apps Script
+   ===================================================== */
+var SYNC_KEY = 'prepdesk.sync';
+var SY = (function(){ try { return Object.assign({ url:'', secret:'', on:false, last:'', lastOk:'', hash:'', msg:'' }, JSON.parse(localStorage.getItem(SYNC_KEY) || '{}')); } catch (e) { return { url:'', secret:'', on:false, last:'', lastOk:'', hash:'', msg:'' }; } })();
+var syncTimer = null, syncBusy = false, restoreArmed = false;
+function saveSY(){ try { localStorage.setItem(SYNC_KEY, JSON.stringify(SY)); } catch (e) {} }
+function hashOf(str){ var h = 5381; for (var i = 0; i < str.length; i++) { h = ((h << 5) + h + str.charCodeAt(i)) | 0; } return String(h); }
+function syncTables(){
+  var t = {};
+  t['Mocks'] = [['Date','Type','Name','Score','Max','Percent','Accuracy','Minutes','Notes']].concat(S.mocks.slice().sort(function(a, b){ return (a.date || '') < (b.date || '') ? -1 : 1; }).map(function(m){ return [m.date || '', m.type || '', m.name || '', m.score, m.max, m.max > 0 ? Math.round(m.score / m.max * 1000) / 10 : '', m.accuracy || '', m.minutes || '', m.notes || '']; }));
+  t['Syllabus'] = [['Set','Group','Topic','Done on','Revision 1 day','Revision 7 days','Revision 30 days']].concat(allTopics().map(function(x){ var st = S.syllabus[x.id] || {}; return [x.setName, x.group, x.name, st.done || '', st.r1 ? 'yes' : '', st.r7 ? 'yes' : '', st.r30 ? 'yes' : '']; }));
+  var py = [['Year','Essay','GS I','GS II','GS III','GS IV']];
+  PYQ_YEARS.forEach(function(y){ py.push([y].concat(PYQ_PAPERS.map(function(p){ return S.pyq[y + '.' + p[0]] ? 'yes' : ''; }))); });
+  t['Mains PYQ'] = py;
+  t['Applications'] = [['Exam','Post','Application no','Applied on','Last date','Exam date','Fee','Admit card','Result','Notes']].concat(S.apps.map(function(a){ return [a.exam || '', a.post || '', a.appNo || '', a.appliedOn || '', a.lastDate || '', a.examDate || '', a.fee || '', a.admit || '', a.result || '', a.notes || '']; }));
+  t['Exams appeared'] = [['Exam','Stage','Date','Result','Marks','Cutoff','Max','Notes']].concat(S.past.map(function(p){ return [p.exam || '', p.stage || '', p.date || '', p.result || '', p.marks || '', p.cutoff || '', p.max || '', p.notes || '']; }));
+  t['Dates'] = [['Title','Date','Type']].concat(S.deadlines.map(function(d){ return [d.title || '', d.date || '', d.type || '']; }));
+  return t;
+}
+function syncStatus(){
+  if (!SY.url) return 'Not set up.';
+  var out = SY.on ? 'Auto backup is on.' : 'Auto backup is off.';
+  if (SY.lastOk) out += ' Last confirmed backup: ' + new Date(SY.lastOk).toLocaleString('en-IN') + '.';
+  if (SY.msg) out += ' ' + SY.msg;
+  return out;
+}
+function setSyncMsg(m){ SY.msg = m; saveSY(); var el = $('#syncstatus'); if (el) el.textContent = syncStatus(); }
+function syncNow(manual){
+  if (!SY.url || !SY.secret) { if (manual) toast('Add the web app address and secret first.'); return Promise.resolve(); }
+  if (syncBusy) return Promise.resolve();
+  var json = JSON.stringify(S), h = hashOf(json);
+  if (!manual && h === SY.hash) return Promise.resolve();
+  if (navigator.onLine === false) { setSyncMsg('Offline. Will try again after the next change.'); return Promise.resolve(); }
+  syncBusy = true;
+  var body = JSON.stringify({ secret: SY.secret, data: S, tables: syncTables() });
+  return fetch(SY.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (j && j.ok) { SY.hash = h; SY.lastOk = new Date().toISOString(); SY.msg = ''; saveSY(); setSyncMsg(''); if (manual) toast('Backed up to Google Drive and Sheet.'); }
+      else { setSyncMsg('Google refused the backup: ' + ((j && j.error) || 'unknown error') + '.'); if (manual) toast('Backup failed. See the message under the button.'); }
+    })
+    .catch(function(){ setSyncMsg('Could not reach the web app. Check the address, and that access is set to Anyone.'); if (manual) toast('Backup failed. See the message under the button.'); })
+    .then(function(){ syncBusy = false; var el = $('#syncstatus'); if (el) el.textContent = syncStatus(); });
+}
+function queueSync(){
+  if (!SY.on || !SY.url) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(function(){ syncNow(false); }, 20000);
+}
+document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden' && SY.on && SY.url) { clearTimeout(syncTimer); syncNow(false); } });
+window.addEventListener('online', function(){ queueSync(); });
+function syncPanel(){
+  return '<h3>Auto backup to Google</h3><p class="note">Sends a copy of your data to your own Google Drive and Sheet about 20 seconds after you change something, and when you leave the page. The copy goes only to the Google script you set up. Your address and secret are stored in this browser, not in the exported backup.</p>' +
+    '<div class="stack noprint"><div><label class="f" for="sy-url">Web app address</label><input id="sy-url" type="url" placeholder="https://script.google.com/macros/s/.../exec" value="' + esc(SY.url) + '" data-change="syurl" autocomplete="off"></div>' +
+    '<div><label class="f" for="sy-sec">Secret</label><input id="sy-sec" type="password" value="' + esc(SY.secret) + '" data-change="sysecret" autocomplete="off"></div>' +
+    '<label class="tick"><input type="checkbox" data-change="syon"' + (SY.on ? ' checked' : '') + '><span class="bub" aria-hidden="true"></span><span class="tx">Back up automatically</span></label>' +
+    '<div class="btnrow"><button type="button" class="btn primary" data-act="syncnow">Back up now</button><button type="button" class="btn' + (restoreArmed ? ' danger' : '') + '" data-act="syncrestore">' + (restoreArmed ? 'Tap again to replace this phone\'s data' : 'Restore from Google') + '</button></div>' +
+    '<p class="note" id="syncstatus" role="status">' + esc(syncStatus()) + '</p></div>';
+}
+ACT.syurl = function(el){ SY.url = el.value.trim(); SY.hash = ''; saveSY(); var s = $('#syncstatus'); if (s) s.textContent = syncStatus(); };
+ACT.sysecret = function(el){ SY.secret = el.value; SY.hash = ''; saveSY(); };
+ACT.syon = function(el){ SY.on = el.checked; saveSY(); if (SY.on) queueSync(); var s = $('#syncstatus'); if (s) s.textContent = syncStatus(); };
+ACT.syncnow = function(){ syncNow(true); };
+ACT.syncrestore = function(){
+  if (!SY.url || !SY.secret) { toast('Add the web app address and secret first.'); return; }
+  if (!restoreArmed) { restoreArmed = true; redraw(); setTimeout(function(){ if (restoreArmed) { restoreArmed = false; if (tab === 'resources') redraw(); } }, 6000); return; }
+  restoreArmed = false;
+  fetch(SY.url + (SY.url.indexOf('?') < 0 ? '?' : '&') + 'secret=' + encodeURIComponent(SY.secret))
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if (!j || !j.ok || !j.data) { toast('Restore failed: ' + ((j && j.error) || 'no data') + '.'); redraw(); return; }
+      S = Object.assign(defaults(), j.data); SY.hash = hashOf(JSON.stringify(S)); saveSY(); save(); toast('Restored from Google.'); redraw();
+    })
+    .catch(function(){ toast('Could not reach the web app.'); redraw(); });
 };
 
 /* =====================================================
