@@ -1,0 +1,39 @@
+name: Build notes on request
+on:
+  workflow_dispatch:
+    inputs:
+      links:
+        description: 'Article addresses, one per line (the site fills this in)'
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: data-writes
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Build notes
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LINKS: ${{ inputs.links }}
+        run: node scripts/notes.mjs
+      - name: Save data to the repository
+        run: |
+          git config user.name "prep-desk-bot"
+          git config user.email "prep-desk-bot@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "Nothing new to save."
+          else
+            git commit -m "Notes on request $(date -u +%F)"
+            git pull --rebase
+            git push
+          fi
