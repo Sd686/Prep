@@ -3,4 +3,20 @@ VERSION:2.0
 PRODID:-//Prep Desk//Notices//EN
 CALSCALE:GREGORIAN
 X-WR-CALNAME:Prep Desk deadlines
+BEGIN:VEVENT
+UID:aa769d5c19fe338e01cf2133af25e170@prepdesk
+DTSTAMP:20261119T204303Z
+DTSTART;VALUE=DATE:20261124
+DTEND;VALUE=DATE:20261125
+SUMMARY:Last date: OSSSC Radiographer Answer Key 2026
+DESCRIPTION:FreeJobAlert\nhttps://www.freejobalert.com/articles/osssc-radiographer-answer-key-2026-3082644\nConfirm the date on the official site.
+END:VEVENT
+BEGIN:VEVENT
+UID:5feeb706029e3a020628de2f0ad99b70@prepdesk
+DTSTAMP:20261119T204303Z
+DTSTART;VALUE=DATE:20261224
+DTEND;VALUE=DATE:20261225
+SUMMARY:Last date: OSSC Various Posts Online Form 2026 (132 Vacancy)
+DESCRIPTION:FreeJobAlert\nhttps://www.freejobalert.com/articles/ossc-recruitment-2026-technical-assistant-weaving-supervisor-3082735\nConfirm the date on the official site.
+END:VEVENT
 END:VCALENDAR
