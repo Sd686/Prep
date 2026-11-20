@@ -16,6 +16,8 @@ jobs:
         with:
           node-version: 24
       - name: Check every source
+        env:
+          CONFIG_URL: ${{ vars.CONFIG_URL }}
         run: node scripts/check.mjs
       - name: Save data to the repository
         run: |
